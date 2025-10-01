@@ -16,7 +16,7 @@
     "jsonwebtoken": "^9.0.0",
     "mongodb": "^5.6.0",
     "mongoose": "^7.3.0",
-    "multer": "^1.4.5",
+    "multer": "^1.4.4",
     "ws": "^8.13.0"
   },
   "engines": {
