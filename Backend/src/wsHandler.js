@@ -1,78 +1,125 @@
-const WebSocket = require('ws');
-const url = require('url');
+/**
+ * server.js — alterações:
+ * - raiz (/) serve login.html
+ * - stream /stream/:deviceId exige token JWT
+ * - frame upload /api/frame/:deviceId mantém suporte a token e upsert Device
+ */
+require('dotenv').config();
+const express = require('express');
+const http = require('http');
+const path = require('path');
+const helmet = require('helmet');
+const cors = require('cors');
+const mongoose = require('mongoose');
+
+const wsHandler = require('./wsHandler');
+const authRoutes = require('./routes/auth');
+const apiRoutes = require('./routes/api');
 const jwtUtils = require('./utils/jwt');
-const Device = require('./models/Device');
 
-const latestFrames = {};   // deviceId -> Buffer
-const viewers = {};        // deviceId -> Set(ws)
-const cameras = new Map(); // ws -> {deviceId,userId}
+const PORT = process.env.PORT || 3000;
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/stealthcam';
 
-function attach(server) {
-  const wss = new WebSocket.Server({ noServer: true });
+mongoose.connect(MONGO_URI).then(()=>console.log('Mongo connected')).catch(err=>console.error('Mongo err', err));
 
-  server.on('upgrade', (req, socket, head) => {
-    const parsed = url.parse(req.url, true);
-    if (parsed.pathname === '/ws') {
-      wss.handleUpgrade(req, socket, head, (ws) => { wss.emit('connection', ws, req); });
-    } else socket.destroy();
-  });
+const app = express();
+app.use(helmet());
+app.use(cors());
+app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: true }));
 
-  wss.on('connection', async (ws, req) => {
-    const q = url.parse(req.url, true).query;
-    if (q.deviceId) {
-      let userId = null;
+// 1) Serve login na raiz
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
+
+// Static assets (JS, CSS, imagens, panel.html, viewer, etc.)
+app.use('/', express.static(path.join(__dirname, 'public')));
+
+// auth & api
+app.use('/api/auth', authRoutes);
+app.use('/api', apiRoutes);
+
+// 2) HTTP frame upload (raw image/jpeg)
+// Accepts Authorization Bearer <token> OR token query param
+app.post('/api/frame/:deviceId', express.raw({ type: ['image/jpeg','application/octet-stream'], limit: `${process.env.MAX_FRAME_MB || 3}mb` }), async (req, res) => {
+  try {
+    const deviceId = req.params.deviceId;
+    if (!req.body || req.body.length === 0) return res.status(400).send('empty body');
+
+    // token from Authorization header or query
+    let token = null;
+    if (req.headers['authorization'] && req.headers['authorization'].startsWith('Bearer ')) token = req.headers['authorization'].slice(7);
+    if (!token && req.query && req.query.token) token = req.query.token;
+
+    let userId = null;
+    if (token) {
       try {
-        if (q.token) {
-          const payload = jwtUtils.verify(q.token);
-          userId = payload.userId;
-        }
-      } catch(e) { /* invalid token -> ignore */ }
-
-      const dev = q.deviceId;
-      cameras.set(ws, { deviceId: dev, userId });
-      console.log('camera connected', dev, 'owner=', userId);
-
-      try {
-        const update = { lastSeen: new Date() };
-        if (userId) update.owner = userId;
-        await Device.findOneAndUpdate({ deviceId: dev }, update, { upsert: true, setDefaultsOnInsert: true });
-      } catch(e){ console.error('device upsert err', e); }
-
-      ws.on('message', (msg) => {
-        if (typeof msg === 'string') return;
-        const buf = Buffer.from(msg);
-        latestFrames[dev] = buf;
-        const set = viewers[dev];
-        if (set) for (const v of set) if (v.readyState === WebSocket.OPEN) v.send(buf);
-      });
-
-      ws.on('close', ()=> { cameras.delete(ws); console.log('camera disconnected', dev); });
-      ws.on('error', ()=> { cameras.delete(ws); });
-    }
-    else if (q.viewerFor) {
-      const dev = q.viewerFor;
-      viewers[dev] = viewers[dev] || new Set();
-      viewers[dev].add(ws);
-      if (latestFrames[dev]) {
-        try { ws.send(latestFrames[dev]); } catch(e){}
+        const payload = jwtUtils.verify(token);
+        if (payload && payload.userId) userId = payload.userId;
+      } catch (e) {
+        // invalid token -> ignore owner, still accept frame (or you can return 401 here)
+        console.warn('frame upload: invalid token (ignored)');
       }
-      ws.on('close', ()=> viewers[dev].delete(ws));
-      ws.on('error', ()=> viewers[dev].delete(ws));
-    } else {
-      ws.close();
     }
+
+    const buf = Buffer.from(req.body);
+    wsHandler.setLatest(deviceId, buf);
+    wsHandler.forwardToViewers(deviceId, buf);
+
+    // upsert device and set owner if userId present
+    const Device = require('./models/Device');
+    const update = { lastSeen: new Date() };
+    if (userId) update.owner = userId;
+    await Device.findOneAndUpdate({ deviceId }, update, { upsert: true, setDefaultsOnInsert: true });
+
+    res.status(200).send('ok');
+  } catch (e) {
+    console.error('frame upload error', e);
+    res.status(500).send('err');
+  }
+});
+
+// 3) MJPEG stream — agora exige token válido
+app.get('/stream/:deviceId', (req, res) => {
+  const id = req.params.deviceId;
+
+  // extrair token (Authorization header ou query token)
+  let token = null;
+  if (req.headers['authorization'] && req.headers['authorization'].startsWith('Bearer ')) {
+    token = req.headers['authorization'].slice(7);
+  } else if (req.query && req.query.token) {
+    token = req.query.token;
+  }
+
+  // validar token
+  try {
+    if (!token) return res.status(401).send('unauthorized');
+    const payload = jwtUtils.verify(token);
+    // opcional: validar ownership aqui se necessitares
+  } catch (e) {
+    return res.status(401).send('invalid token');
+  }
+
+  res.writeHead(200, {
+    'Content-Type': 'multipart/x-mixed-replace; boundary=--frame',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive'
   });
+  let last = null;
+  const t = setInterval(() => {
+    const frame = wsHandler.getLatest(id);
+    if (frame && frame !== last) {
+      res.write('--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ' + frame.length + '\r\n\r\n');
+      res.write(frame);
+      res.write('\r\n');
+      last = frame;
+    }
+  }, 150);
+  req.on('close', () => clearInterval(t));
+});
 
-  console.log('WS attached at /ws');
-}
-
-function getLatest(deviceId) { return latestFrames[deviceId]; }
-function setLatest(deviceId, buffer) { latestFrames[deviceId] = buffer; }
-function forwardToViewers(deviceId, buffer) {
-  const set = viewers[deviceId];
-  if (!set) return;
-  for (const v of set) if (v.readyState === WebSocket.OPEN) v.send(buffer);
-}
-function listDevices() { return Object.keys(latestFrames); }
-
-module.exports = { attach, getLatest, setLatest, forwardToViewers, listDevices };
+// start server and attach WS
+const server = http.createServer(app);
+wsHandler.attach(server); // will handle /ws upgrades
+server.listen(PORT, ()=>console.log(`Server listening on ${PORT}`));
