@@ -1,22 +1,107 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><title>Login</title></head>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>StealthCam - Login</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; max-width:420px;margin:28px auto;padding:12px; }
+    .box{border:1px solid #ddd;padding:16px;border-radius:8px;}
+    input{width:100%;padding:8px;margin:6px 0;border-radius:4px;border:1px solid #ccc;}
+    button{padding:10px 14px;border-radius:6px;border:0;background:#0b79d0;color:#fff; cursor:pointer;}
+    button[disabled]{opacity:0.6; cursor:not-allowed;}
+    #msg{margin-top:10px;color:#a00;white-space:pre-wrap;}
+    #log{margin-top:10px;font-size:12px;color:#333;background:#f7f7f7;padding:8px;border-radius:6px;max-height:160px;overflow:auto;}
+  </style>
+</head>
 <body>
-  <h3>Login</h3>
-  <input id="user" placeholder="username"/><br/>
-  <input id="pass" placeholder="password" type="password"/><br/>
-  <button id="btn">Login</button>
+  <div class="box">
+    <h2>Login</h2>
+    <label>Username</label>
+    <input id="user" placeholder="username" autocomplete="username"/>
+    <label>Password</label>
+    <input id="pass" placeholder="password" type="password" autocomplete="current-password"/>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button id="btn">Login</button>
+      <button id="btnDemo" title="Create demo user">Criar demo</button>
+    </div>
+    <div id="msg"></div>
+    <div id="log" aria-hidden="true"></div>
+  </div>
+
   <script>
-    document.getElementById('btn').onclick = async () => {
-      const u = document.getElementById('user').value;
-      const p = document.getElementById('pass').value;
-      const r = await fetch('/api/auth/login', {
-        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username:u,password:p})
-      });
-      const j = await r.json();
-      if (j.token) {
-        localStorage.setItem('token', j.token);
-        location.href = '/panel.html';
-      } else alert('login failed: ' + JSON.stringify(j));
-    };
+  (function(){
+    const $ = id => document.getElementById(id);
+    const btn = $('btn'), btnDemo = $('btnDemo'), msg = $('msg'), log = $('log');
+
+    function info(s){ console.log(s); log.innerText = (new Date().toLocaleTimeString()) + ' — ' + s + '\\n' + log.innerText; }
+    function showMsg(s, isErr=true){ msg.style.color = isErr ? '#a00' : '#060'; msg.innerText = s; info('UI MSG: ' + s); }
+
+    async function doLogin(){
+      try {
+        btn.disabled = true; showMsg('A tentar iniciar sessão...', false);
+        const username = $('user').value.trim();
+        const password = $('pass').value.trim();
+        if(!username || !password){ showMsg('Preenche username e password'); btn.disabled = false; return; }
+        const url = '/api/auth/login';
+        info('fetch -> ' + url + ' { username:' + username + ', password: ****** }');
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        info('Resposta HTTP: ' + res.status + ' ' + res.statusText);
+        const j = await res.json().catch(err => { info('JSON parse error: ' + err); return null; });
+        info('Resposta JSON: ' + JSON.stringify(j));
+        if (!res.ok) {
+          showMsg('Login falhou: ' + (j && j.error ? j.error : ('status ' + res.status)));
+          btn.disabled = false;
+          return;
+        }
+        if (j && j.token) {
+          localStorage.setItem('token', j.token);
+          showMsg('Login ok — a redirecionar...', false);
+          setTimeout(()=> window.location.href = '/panel.html', 700);
+        } else {
+          showMsg('Resposta inesperada do servidor. Ver console.');
+          btn.disabled = false;
+        }
+      } catch (e) {
+        console.error('login err', e);
+        showMsg('Erro na rede: ' + e.message);
+        btn.disabled = false;
+      }
+    }
+
+    async function createDemo(){
+      btnDemo.disabled = true;
+      showMsg('Criando utilizador demo...', false);
+      try {
+        const u = 'demo_' + Math.floor(Math.random()*10000);
+        const payload = { username: u, password: 'demo1234' };
+        const res = await fetch('/api/auth/register', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        });
+        const j = await res.json().catch(()=>null);
+        info('register status: ' + res.status + ' -> ' + JSON.stringify(j));
+        if (res.ok) {
+          $('user').value = u; $('pass').value = 'demo1234';
+          showMsg('Demo criado. Faz login agora.', false);
+        } else {
+          showMsg('Não foi possível criar demo: ' + (j && j.error ? j.error : res.status));
+        }
+      } catch(e) {
+        console.error('create demo err', e);
+        showMsg('Erro: ' + e.message);
+      } finally { btnDemo.disabled = false; }
+    }
+
+    // Attach handlers
+    btn.addEventListener('click', doLogin);
+    btnDemo.addEventListener('click', createDemo);
+
+    info('login.html loaded; handlers attached');
+  })();
   </script>
-</body></html>
+</body>
+</html>
