@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Registo — StealthCam</title><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/assets/style.css"></head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="brand"><div class="logo">SC</div><div><div class="h1">Criar conta</div><div class="small">Regista um utilizador</div></div></div>
+      <div class="topbar-actions small"><a href="/login.html" style="color:var(--accent);text-decoration:none">Voltar ao login</a></div>
+    </div>
+
+    <div class="card" style="max-width:680px;margin:auto">
+      <div class="form-row">
+        <label class="small">Server (opcional)</label>
+        <input id="server" type="url" placeholder="http://seu_servidor:3000" />
+      </div>
+      <div class="form-row">
+        <input id="user" type="text" placeholder="username"/>
+        <input id="pass" type="password" placeholder="password"/>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button id="btn">Registar</button>
+        <div id="status" class="small" style="margin-left:8px"></div>
+      </div>
+      <div id="msg" class="notice" style="display:none"></div>
+    </div>
+  </div>
+
+<script>
+const serverInput = document.getElementById('server');
+serverInput.value = location.origin;
+document.getElementById('btn').addEventListener('click', async () => {
+  const srv = (serverInput.value||location.origin).replace(/\/+$/,'');
+  const user = document.getElementById('user').value.trim();
+  const pass = document.getElementById('pass').value.trim();
+  const msg = document.getElementById('msg'); msg.style.display='none';
+  if (!user || !pass) { msg.textContent='Preenche username e password'; msg.style.display='block'; return; }
+  try {
+    const res = await fetch(srv + '/api/auth/register', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username:user,password:pass})});
+    const j = await res.json();
+    if (res.ok && j.ok) { location.href = '/login.html'; } else { msg.textContent = JSON.stringify(j); msg.style.display='block'; }
+  } catch(e) { msg.textContent = 'Erro: ' + e.message; msg.style.display='block'; }
+});
+</script>
+</body>
+</html>
