@@ -26,6 +26,13 @@ app.use(cors());
 app.use(morgan('tiny'));
 app.use(express.json({ limit:'5mb' }));
 app.use(express.urlencoded({ extended:true }));
+// debug endpoints (coloca perto dos outros routes)
+app.get('/api/ping', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+
+app.post('/api/debug-log', express.text({ type: '*/*' }), (req, res) => {
+  console.log('DEBUG_LOG POST body:', req.headers['content-type'], req.body ? req.body.toString().slice(0,2000) : '(empty)');
+  res.json({ok:true});
+});
 
 // serve frontend from /public_web (new tree)
 app.use('/', express.static(path.resolve(__dirname, 'public_web')));
