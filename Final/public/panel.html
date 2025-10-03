@@ -17,13 +17,31 @@
 </div>
 
 <script>
-(async function(){
-  const token = localStorage.getItem('token');
-  if(!token) return location.href = '/login.html';
+(function(){
+  // Tenta obter token: primeiro localStorage, depois cookie stealth_token
+  function getCookie(name) {
+    const m = document.cookie.match(new RegExp('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)'));
+    return m ? decodeURIComponent(m[2]) : null;
+  }
+
+  var token = localStorage.getItem('token');
+  if (!token) {
+    var c = getCookie('stealth_token');
+    if (c) {
+      try { localStorage.setItem('token', c); token = c; }
+      catch(e) { console.warn('could not set localStorage token', e); }
+    }
+  }
+
+  if (!token) {
+    // Nenhum token: redireciona para login
+    return location.href = '/login.html';
+  }
+
   const $ = id => document.getElementById(id);
   const grid = $('grid'), addBtn = $('addBtn'), newDevice = $('newDevice'), logout = $('logout'), viewSel = $('viewSel');
 
-  logout.addEventListener('click', ()=>{ localStorage.removeItem('token'); location.href='/login.html' });
+  logout.addEventListener('click', ()=>{ localStorage.removeItem('token'); document.cookie = 'stealth_token=; Max-Age=0; path=/'; location.href='/login.html' });
 
   addBtn.addEventListener('click', async ()=>{
     const id = newDevice.value.trim();
@@ -58,7 +76,8 @@
     }
   }
 
-  await load();
+  load();
 })();
 </script>
+
 </html>
