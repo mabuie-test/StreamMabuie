@@ -1,0 +1,46 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Viewer - Multi</title><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/styles.css"></head>
+<body>
+  <div class="container">
+    <h2 style="margin-top:0">Viewer — múltiplas câmeras</h2>
+    <div id="grid" class="grid"></div>
+    <div class="footer">Usa MJPEG por padrão; botão WS disponível em cada card.</div>
+  </div>
+
+<script>
+(function(){
+  const params = new URLSearchParams(location.search);
+  const devicesParam = params.get('devices') || '';
+  const devices = devicesParam.split(',').map(s=>s.trim()).filter(Boolean);
+  const grid = document.getElementById('grid');
+  if(devices.length===0) { grid.innerHTML = '<div class="card">Nenhuma camera escolhida.</div>'; return; }
+  devices.forEach(d => {
+    const card = document.createElement('div'); card.className='card';
+    const h = document.createElement('h4'); h.textContent = d;
+    const img = document.createElement('img'); img.className='thumb'; img.src = '/stream/' + encodeURIComponent(d);
+    const btnWs = document.createElement('button'); btnWs.className='btn'; btnWs.innerText='Connect WS';
+    const status = document.createElement('div'); status.className='small';
+    btnWs.addEventListener('click', ()=>{
+      try {
+        const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+        const ws = new WebSocket(proto + '://' + location.host + '/ws?viewerFor=' + encodeURIComponent(d));
+        ws.binaryType = 'arraybuffer';
+        status.innerText = 'Connecting...';
+        ws.onopen = ()=> status.innerText = 'WS connected';
+        ws.onclose = ()=> status.innerText = 'WS closed';
+        ws.onerror = ()=> status.innerText = 'WS error';
+        ws.onmessage = ev => {
+          const blob = new Blob([ev.data], { type:'image/jpeg' });
+          const url = URL.createObjectURL(blob);
+          img.src = url;
+          setTimeout(()=> URL.revokeObjectURL(url), 600);
+        };
+      } catch(e) { status.innerText = 'err: ' + e.message; }
+    });
+
+    card.appendChild(h); card.appendChild(img); card.appendChild(btnWs); card.appendChild(status);
+    grid.appendChild(card);
+  });
+})();
+</script>
+</html>
