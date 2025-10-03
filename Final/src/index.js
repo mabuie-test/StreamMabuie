@@ -30,7 +30,8 @@ app.use(express.urlencoded({ extended: true }));
 app.get('/', (req,res)=> res.redirect('/login.html'));
 
 // static front-end
-app.use('/', express.static(path.join(__dirname, 'public')));
+// ou de forma robusta:
+app.use('/', express.static(path.resolve(__dirname, '..', 'public')));
 
 // api
 app.use('/api/auth', authRoutes);
