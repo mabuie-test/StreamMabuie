@@ -1,40 +1,70 @@
-
 <!doctype html>
 <html>
 <head><meta charset="utf-8"><title>Painel</title><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/styles.css"></head>
 <body>
   <div class="container">
     <h2>Painel</h2>
-    <div>
-      <input id="newDevice" class="input" placeholder="Device ID"><button id="addBtn" class="btn">Adicionar</button>
-      <button id="logout" class="btn">Logout</button>
+    <div class="card">
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="newDevice" class="input" placeholder="Device ID">
+        <button id="addBtn" class="btn">Adicionar</button>
+        <button id="logout" class="btn" style="background:#7c3aed">Logout</button>
+        <button id="viewSel" class="btn" style="margin-left:auto">Ver selecionadas</button>
+      </div>
+      <div id="grid" class="grid"></div>
+      <div id="panelMsg" class="small" style="margin-top:10px;color:#f66;white-space:pre-wrap"></div>
     </div>
-    <div id="grid" class="grid"></div>
   </div>
+
 <script>
 (async ()=>{
+  const panelMsg = document.getElementById('panelMsg');
+  function showErr(s){ panelMsg.innerText = s; console.log(s); }
+
   const token = localStorage.getItem('token');
-  if (!token) return location.href='/login.html';
+  if (!token) return location.href = '/login.html';
+
   document.getElementById('logout').onclick = ()=>{ localStorage.removeItem('token'); location.href='/login.html'; };
+
   document.getElementById('addBtn').onclick = async ()=> {
     const id = document.getElementById('newDevice').value.trim(); if(!id) return alert('preenche');
-    const r = await fetch('/api/device/add', { method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token }, body: JSON.stringify({ deviceId: id })});
-    if (!r.ok) return alert('erro');
-    load();
+    try {
+      const r = await fetch('/api/device/add', { method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token }, body: JSON.stringify({ deviceId: id })});
+      const txt = await r.text();
+      if (!r.ok) { showErr('Erro ao adicionar: status ' + r.status + ' \\n' + txt); return; }
+      document.getElementById('newDevice').value = '';
+      load();
+    } catch(e){ showErr('Fetch error add: ' + e.message); }
   };
+
+  document.getElementById('viewSel').onclick = ()=>{
+    const checked = Array.from(document.querySelectorAll('input[type=checkbox]:checked')).map(c=>c.value);
+    if (checked.length===0) return alert('Selecciona ao menos 1 camera');
+    location.href = '/viewer_multi.html?devices=' + encodeURIComponent(checked.join(','));
+  };
+
   async function load(){
-    const r = await fetch('/api/devices', { headers: { 'Authorization': 'Bearer ' + token }});
-    if (!r.ok) return alert('erro a carregar');
-    const j = await r.json();
-    const grid = document.getElementById('grid'); grid.innerHTML = '';
-    for(const d of j.devices){
-      const c = document.createElement('div'); c.className='card';
-      const h = document.createElement('h4'); h.innerText = d.deviceId;
-      const img = document.createElement('img'); img.src = '/stream/' + encodeURIComponent(d.deviceId); img.className='thumb';
-      c.appendChild(h); c.appendChild(img);
-      grid.appendChild(c);
-    }
+    try {
+      const r = await fetch('/api/devices', { headers: { 'Authorization': 'Bearer ' + token }});
+      const txt = await r.text();
+      if (!r.ok) { showErr('Erro a carregar devices: status ' + r.status + '\\n' + txt); return; }
+      let j = null;
+      try { j = JSON.parse(txt); } catch(e) { showErr('Resposta inválida (não JSON) ao pedir devices:\\n' + txt); return; }
+      const grid = document.getElementById('grid'); grid.innerHTML = '';
+      if (!j.ok || !j.devices) { showErr('Resposta inesperada: ' + JSON.stringify(j)); return; }
+      for(const d of j.devices){
+        const div = document.createElement('div'); div.className='card';
+        const chk = document.createElement('input'); chk.type='checkbox'; chk.value = d.deviceId;
+        const h = document.createElement('h4'); h.textContent = d.deviceId + (d.label? ' - '+d.label : '');
+        const img = document.createElement('img'); img.className='thumb'; img.src = '/stream/' + encodeURIComponent(d.deviceId);
+        const meta = document.createElement('div'); meta.className='small'; meta.textContent = 'online: ' + d.online + ' | ' + new Date(d.lastSeen).toLocaleString();
+        div.appendChild(chk); div.appendChild(h); div.appendChild(img); div.appendChild(meta);
+        grid.appendChild(div);
+        img.onclick = ()=> window.open('/viewer.html?device=' + encodeURIComponent(d.deviceId), '_blank');
+      }
+    } catch(e){ showErr('Erro no fetch devices: ' + e.message); }
   }
+
   load();
 })();
 </script>
