@@ -1,5 +1,11 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><title>StealthCam — Login</title><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/styles.css"></head>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>StealthCam — Login</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="/styles.css">
+</head>
 <body>
   <div class="container">
     <div class="header">
@@ -13,40 +19,91 @@
       <label class="small" style="margin-top:8px">Password</label>
       <input id="pass" type="password" class="input" placeholder="password" />
       <div style="display:flex;gap:8px;margin-top:12px">
-        <button id="btn" class="btn">Login</button>
-        <button id="btnDemo" class="btn" style="background:#7c3aed">Criar demo</button>
+        <!-- botão com onclick inline (mais robusto em mobile) -->
+        <button id="btn" class="btn" type="button" onclick="doLogin()">Login</button>
+        <button id="btnDemo" class="btn" style="background:#7c3aed" type="button" onclick="createDemo()">Criar demo</button>
       </div>
       <div id="msg" class="small" style="margin-top:8px;color:#f88"></div>
     </div>
   </div>
 
+  <!-- fallback form (POST) que usa /api/auth/login-web (servidor processa e escreve token) -->
+  <form id="fallbackForm" action="/api/auth/login-web" method="post" style="display:none">
+    <input name="username" id="f_user"/>
+    <input name="password" id="f_pass"/>
+  </form>
+
 <script>
 (function(){
   const $ = id => document.getElementById(id);
-  const btn = $('btn'), btnDemo = $('btnDemo'), msg = $('msg');
+  const msg = $('msg');
+
   async function doLogin(){
     try {
-      btn.disabled = true; msg.innerText = 'Iniciando...';
+      msg.innerText = '';
       const username = $('user').value.trim(), password = $('pass').value.trim();
-      if(!username||!password){ msg.innerText='Preenche campos'; btn.disabled=false; return; }
-      const res = await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
-      const j = await res.json().catch(()=>null);
-      if(!res.ok){ msg.innerText = (j && j.error) || 'Login falhou'; btn.disabled=false; return; }
+      if(!username || !password){ msg.innerText='Preenche campos'; return; }
+
+      // tenta via fetch (JSON)
+      const res = await fetch('/api/auth/login', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+
+      // se fetch falhar com CORS/network ou retornar não-ok, tentamos fallback
+      if(!res.ok){
+        // tenta ler json/text para mensagem
+        let txt;
+        try { txt = await res.text(); } catch(e){ txt = 'login falhou'; }
+        msg.innerText = 'Login falhou: ' + txt;
+        // fallback: envia form POST (body urlencoded) para /api/auth/login-web
+        tryFallback(username, password);
+        return;
+      }
+
+      const j = await res.json();
+      if(!j || !j.token){ msg.innerText = 'Resposta inválida'; tryFallback(username,password); return; }
+
+      // guarda token e redirect
       localStorage.setItem('token', j.token);
       location.href = '/panel.html';
-    } catch(e){ msg.innerText = 'Erro: '+ e.message; btn.disabled=false; }
+
+    } catch (e) {
+      // fetch/network error -> tentar fallback com form POST
+      msg.innerText = 'Erro de rede: ' + e.message + ' — tentando fallback...';
+      tryFallback($('user').value.trim(), $('pass').value.trim());
+    }
   }
-  async function createDemo(){
-    btnDemo.disabled=true; msg.innerText='Criando demo...';
+
+  // fallback via hidden form (para browsers que bloqueiam fetch/AJAX)
+  window.tryFallback = function(user, pass){
     try {
+      $('f_user').value = user;
+      $('f_pass').value = pass;
+      document.getElementById('fallbackForm').submit();
+    } catch(e){
+      alert('Fallback falhou: ' + e.message);
+    }
+  };
+
+  // cria demo user via fetch; se falha, mostra mensagem
+  window.createDemo = async function(){
+    try {
+      msg.innerText = 'Criando demo...';
       const u = 'demo'+Math.floor(Math.random()*10000);
-      const r = await fetch('/api/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:'demo1234'})});
-      const j = await r.json().catch(()=>null);
-      if(!r.ok){ msg.innerText = (j && j.error) || 'Erro'; } else { $('user').value=u; $('pass').value='demo1234'; msg.innerText='Demo criado. Faz login.'; }
-    } catch(e){ msg.innerText = e.message; } finally { btnDemo.disabled=false; }
-  }
-  btn.addEventListener('click', doLogin);
-  btnDemo.addEventListener('click', createDemo);
+      const r = await fetch('/api/auth/register', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ username: u, password: 'demo1234' })
+      });
+      if(!r.ok){ const t = await r.text().catch(()=>''); msg.innerText = 'Erro: ' + t; return; }
+      $('user').value = u; $('pass').value = 'demo1234'; msg.innerText = 'Demo criado. Clica Login.';
+    } catch(e){ msg.innerText = 'Erro demo: ' + e.message; }
+  };
+
+  // expõe doLogin no escopo global para o onclick inline funcionar
+  window.doLogin = doLogin;
 })();
 </script>
+</body>
 </html>
