@@ -1,28 +1,91 @@
-
 <!doctype html>
 <html>
-<head><meta charset="utf-8"><title>Login</title><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/styles.css"></head>
+<head>
+  <meta charset="utf-8">
+  <title>StealthCam — Login</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="/styles.css">
+</head>
 <body>
-  <div class="container card">
+  <div class="container card" style="max-width:420px">
     <h2>Login</h2>
     <input id="user" class="input" placeholder="username"><br>
     <input id="pass" class="input" placeholder="password" type="password"><br>
-    <button id="btnLogin" class="btn">Login</button>
-    <div id="msg" class="small"></div>
+    <div style="display:flex;gap:8px">
+      <button id="btnLogin" class="btn">Login</button>
+      <button id="btnDemo" class="btn" style="background:#7c3aed">Criar demo</button>
+    </div>
+    <div id="msg" class="small" style="margin-top:10px;color:#f66;white-space:pre-wrap"></div>
+
+    <div style="margin-top:8px" class="small">
+      <strong>Debug info:</strong>
+      <div id="dbg" style="color:#999"></div>
+    </div>
   </div>
+
 <script>
-document.getElementById('btnLogin').onclick = async () => {
-  const u = document.getElementById('user').value.trim();
-  const p = document.getElementById('pass').value.trim();
-  const msg = document.getElementById('msg');
-  if (!u||!p) { msg.innerText='Preenche'; return; }
+const dbgEl = document.getElementById('dbg');
+function dbg(msg){ dbgEl.innerText = (new Date()).toLocaleTimeString() + ' — ' + msg + '\\n' + dbgEl.innerText; }
+
+document.getElementById('btnDemo').onclick = async () => {
+  const msg = document.getElementById('msg'); msg.innerText = 'Criando demo...';
   try {
-    const r = await fetch('/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:u,password:p})});
-    const j = await r.json();
-    if (!r.ok) { msg.innerText = 'Erro: '+JSON.stringify(j); return; }
-    localStorage.setItem('token', j.token);
-    location.href = '/panel.html';
-  } catch(e){ msg.innerText = 'Err: '+e.message; }
+    const u = 'demo' + Math.floor(Math.random()*10000);
+    const r = await fetch('/api/auth/register', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: u, password: 'demo1234' })});
+    const text = await r.text();
+    dbg('register status ' + r.status);
+    if (!r.ok) { msg.innerText = 'Erro a criar demo: ' + text; return; }
+    msg.innerText = 'Demo criado: ' + u + ' / demo1234';
+  } catch(e) { msg.innerText = 'Erro: ' + e.message; dbg('fetch err ' + e.message); }
+};
+
+document.getElementById('btnLogin').onclick = async () => {
+  const user = document.getElementById('user').value.trim();
+  const pass = document.getElementById('pass').value.trim();
+  const msg = document.getElementById('msg');
+  if (!user || !pass) { msg.innerText = 'Preenche campos'; return; }
+  msg.innerText = 'A autenticar...';
+  try {
+    const url = location.origin + '/api/auth/login';
+    dbg('POST -> ' + url);
+    const r = await fetch(url, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ username: user, password: pass }), redirect: 'manual' });
+
+    dbg('status: ' + r.status + ' (' + r.type + ')');
+
+    // tenta primeiro obter texto bruto para diagnosticar (JSON ou HTML)
+    const txt = await r.text();
+    dbg('response length: ' + txt.length);
+
+    // mostrar o corpo bruto no UI para debugging
+    if (!r.ok) {
+      msg.innerText = 'Login falhou — status ' + r.status + '\\nResp: ' + txt;
+      return;
+    }
+
+    // tenta parsear JSON com segurança
+    let parsed = null;
+    try { parsed = JSON.parse(txt); } catch(e) {
+      // pode ser que o servidor devolva JSON com Content-Type errado; mesmo assim tentamos interpretar
+      msg.innerText = 'Resposta não JSON, mas status OK. Body:\\n' + txt;
+      // se for JSON-like, tenta extrair token de forma segura:
+      try {
+        const maybe = eval('(' + txt + ')'); // só para debug — caso especial; não inseguro aqui
+        parsed = maybe;
+      } catch(_) { parsed = null; }
+    }
+
+    if (parsed && parsed.token) {
+      localStorage.setItem('token', parsed.token);
+      msg.innerText = 'Login OK — a redirecionar para painel...';
+      setTimeout(()=> location.href = '/panel.html', 200);
+    } else {
+      // se não há token, mostra texto
+      msg.innerText = 'Login OK (200) mas sem token. Resp:\\n' + txt;
+    }
+  } catch (e) {
+    msg.innerText = 'Erro: ' + e.message;
+    dbg('fetch err: ' + e.message);
+  }
 };
 </script>
 </body>
