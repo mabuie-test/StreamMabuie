@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/authController');
 
-// modelos / utilitários necessários para o fallback form
+// models / utils usados pelo fallback form
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('../utils/jwt');
@@ -11,30 +11,25 @@ const jwt = require('../utils/jwt');
 router.post('/register', ctrl.register);
 router.post('/login', ctrl.login);
 
-// Rota fallback para suportar login via form (ex.: submit hidden form do login.html)
-// Recebe urlencoded form { username, password } e responde com HTML que grava token em localStorage.
+// Rota form-friendly: aceita POST urlencoded e retorna página que grava token no localStorage
 router.post('/login-web', express.urlencoded({ extended: true }), async (req, res) => {
   try {
     const username = (req.body.username || '').toString().trim();
     const password = (req.body.password || '').toString();
 
     if (!username || !password) {
-      return res.status(400).send(`<html><body>Missing fields. <a href="/login.html">Voltar</a></body></html>`);
+      return res.status(400).send(`<html><body>Missing fields. <a href="/login.html">Back</a></body></html>`);
     }
 
     const u = await User.findOne({ username });
-    if (!u) {
-      return res.status(401).send(`<html><body>Credenciais inválidas. <a href="/login.html">Voltar</a></body></html>`);
-    }
+    if (!u) return res.status(401).send(`<html><body>Invalid credentials. <a href="/login.html">Back</a></body></html>`);
 
     const ok = await bcrypt.compare(password, u.passwordHash);
-    if (!ok) {
-      return res.status(401).send(`<html><body>Credenciais inválidas. <a href="/login.html">Voltar</a></body></html>`);
-    }
+    if (!ok) return res.status(401).send(`<html><body>Invalid credentials. <a href="/login.html">Back</a></body></html>`);
 
     const token = jwt.sign({ userId: u._id, username: u.username });
 
-    // Responde com uma página que guarda o token no localStorage e redireciona para painel
+    // devolve pequena página que grava token no localStorage e redireciona
     res.send(`
       <!doctype html>
       <html>
@@ -45,7 +40,7 @@ router.post('/login-web', express.urlencoded({ extended: true }), async (req, re
               localStorage.setItem('token', ${JSON.stringify(token)});
               location.href = '/panel.html';
             } catch (e) {
-              document.body.innerText = 'Login OK mas não foi possível guardar token: ' + e.message + '\\nVoltar para <a href="/login.html">login</a>';
+              document.body.innerHTML = 'Login OK but could not save token: ' + e.message + '<br/><a href="/login.html">Back</a>';
             }
           </script>
         </body>
@@ -53,7 +48,7 @@ router.post('/login-web', express.urlencoded({ extended: true }), async (req, re
     `);
   } catch (err) {
     console.error('login-web err', err);
-    res.status(500).send(`<html><body>Erro no servidor. <a href="/login.html">Voltar</a></body></html>`);
+    res.status(500).send(`<html><body>Server error. <a href="/login.html">Back</a></body></html>`);
   }
 });
 
