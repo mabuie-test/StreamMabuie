@@ -1,4 +1,4 @@
-const RAW_BASE = import.meta.env.VITE_API_BASE || 'https://streammabuie.onrender.com';
+const RAW_BASE = import.meta.env.VITE_API_BASE || 'https://streammabuie.onrender.com/api';
 export const BASE = RAW_BASE.replace(/\/$/, ''); // remove trailing slash
 
 async function request(method, path, body, opts = {}) {
