@@ -1,19 +1,40 @@
+// frontend/src/pages/Dashboard.jsx
 import React, { useEffect, useState } from 'react';
+import { api, BASE } from '../api';
 
-export default function Dashboard({ logout }){
+export default function Dashboard({ logout }) {
   const [devices, setDevices] = useState([]);
   const [media, setMedia] = useState([]);
   const [playerSrc, setPlayerSrc] = useState('');
 
-  async function loadDevices(){
-    const res = await fetch('/api/devices/list');
-    if(res.ok) setDevices(await res.json());
+  async function loadDevices() {
+    try {
+      const data = await api.getJson('/devices/list');
+      setDevices(data);
+    } catch (e) {
+      console.error('loadDevices error', e);
+    }
   }
-  async function loadMedia(){
-    const res = await fetch('/api/upload/list');
-    if(res.ok) setMedia(await res.json());
+
+  async function loadMedia() {
+    try {
+      const data = await api.getJson('/upload/list');
+      setMedia(data);
+    } catch (e) {
+      console.error('loadMedia error', e);
+    }
   }
-  useEffect(()=>{ loadDevices(); loadMedia(); }, []);
+
+  useEffect(() => {
+    loadDevices();
+    loadMedia();
+  }, []);
+
+  function playFile(filename) {
+    // Se BASE estiver vazio (desenvolvimento via proxy), usa caminho relativo /uploads
+    const baseUploads = BASE || '';
+    setPlayerSrc(baseUploads + '/uploads/' + filename);
+  }
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -38,7 +59,7 @@ export default function Dashboard({ logout }){
               <div key={m._id} className="flex items-center justify-between border-b py-2">
                 <div>{m.filename}</div>
                 <div>
-                  <button className="px-2 py-1 bg-sky-600 text-white rounded" onClick={()=>setPlayerSrc('/uploads/' + m.filename)}>Play</button>
+                  <button className="px-2 py-1 bg-sky-600 text-white rounded" onClick={()=>playFile(m.filename)}>Play</button>
                 </div>
               </div>
             )}
