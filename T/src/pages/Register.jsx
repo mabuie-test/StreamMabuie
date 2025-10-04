@@ -57,7 +57,7 @@ export default function Register() {
           Já tens conta?{" "}
           <span
             className="text-blue-500 cursor-pointer"
-            e("/login")}
+            onClick={() => navigate("/login")}
           >
             Entrar
           </span>
