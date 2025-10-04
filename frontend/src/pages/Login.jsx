@@ -11,7 +11,7 @@ export default function Login({ onLogin }) {
     setMsg('A processar...');
     try {
       // usa api.postJson que lança em caso de status !== 2xx
-      const j = await api.postJson('/auth/login', { email, password });
+      const j = await api.postJson('/api/auth/login', { email, password });
       if (j && j.token) {
         onLogin(j.token);
       } else {
