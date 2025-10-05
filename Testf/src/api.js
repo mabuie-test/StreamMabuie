@@ -1,13 +1,26 @@
-const API_BASE = import.meta.env.VITE_API_BASE || '';
+const BASE_URL = "https://streammabuie.onrender.com/api";
 
-export async function apiFetch(path, opts = {}) {
-  const token = localStorage.getItem('token');
-  opts.headers = opts.headers || {};
-  if (token) opts.headers['Authorization'] = 'Bearer ' + token;
-  const res = await fetch(API_BASE + path, opts);
-  if (!res.ok) {
-    const err = await res.json().catch(()=>({error: res.statusText}));
-    throw err;
-  }
-  return res.json().catch(()=>null);
+export async function login(email, password) {
+  const res = await fetch(`${BASE_URL}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  return res.json();
+}
+
+export async function register(email, password) {
+  const res = await fetch(`${BASE_URL}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  return res.json();
+}
+
+export async function getDevices(token) {
+  const res = await fetch(`${BASE_URL}/devices`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.json();
 }
